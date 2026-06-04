@@ -237,7 +237,9 @@ class ScoreboardRegistrationModule(PipelineModule):
             return
 
         self.status = ModuleStatus.ACTIVE
-        if not match_context.registration_complete or self.refine_registry_after_registration:
+        if not match_context.registry_locked and (
+            not match_context.registration_complete or self.refine_registry_after_registration
+        ):
             self._extract_slot_observations(frame_packet.image)
             self._promote_registry(match_context)
 
@@ -267,6 +269,7 @@ class ScoreboardRegistrationModule(PipelineModule):
         match_context.players = players
         match_context.player_registry = {str(player.player_id): player.name for player in players}
         match_context.registration_complete = result.registration_complete
+        match_context.registry_locked = result.registration_complete
         match_context.registry_confidence = result.confidence
         self.registration_result = result
         self.snapshot.registration_complete = result.registration_complete

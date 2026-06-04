@@ -82,6 +82,7 @@ class ValidationPipeline:
         self.dashboard.update_hardpoint(self.bundle.hardpoint.snapshot)
         dominant_confidence = (
             self.bundle.scoreboard.last_ocr_confidence
+            or self.bundle.killfeed.last_confidence
             or self.bundle.utility.last_confidence
             or self.bundle.hardpoint.last_confidence
         )
@@ -207,6 +208,49 @@ class ValidationPipeline:
                 f"Kills: {state.killfeed_counts.kills}",
                 f"Deaths: {state.killfeed_counts.deaths}",
                 f"Trades: {state.killfeed_counts.trades}",
+                f"Name detections: {state.killfeed_counts.name_detections}",
+                f"Resolved name detections: {state.killfeed_counts.resolved_name_detections}",
+                "Player detection counts:",
+            ]
+        )
+        if state.killfeed_counts.player_detection_counts:
+            for player_name, count in sorted(
+                state.killfeed_counts.player_detection_counts.items(),
+                key=lambda item: (-item[1], item[0].lower()),
+            ):
+                lines.append(f"- {player_name}: {count}")
+        else:
+            lines.append("- none")
+        lines.extend(
+            [
+                "",
+                "Player Kills:",
+            ]
+        )
+        if state.killfeed_counts.player_kills:
+            for player_name, count in sorted(
+                state.killfeed_counts.player_kills.items(),
+                key=lambda item: (-item[1], item[0].lower()),
+            ):
+                lines.append(f"- {player_name}: {count}")
+        else:
+            lines.append("- none")
+        lines.extend(
+            [
+                "",
+                "Player Deaths:",
+            ]
+        )
+        if state.killfeed_counts.player_deaths:
+            for player_name, count in sorted(
+                state.killfeed_counts.player_deaths.items(),
+                key=lambda item: (-item[1], item[0].lower()),
+            ):
+                lines.append(f"- {player_name}: {count}")
+        else:
+            lines.append("- none")
+        lines.extend(
+            [
                 "",
                 "Utility Counts:",
                 f"Grenade: {state.utility_counts.grenade}",

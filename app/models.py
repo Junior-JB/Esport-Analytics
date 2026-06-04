@@ -56,6 +56,7 @@ class MatchContext:
     players: list[RegisteredPlayer] = field(default_factory=list)
     player_registry: dict[str, str] = field(default_factory=dict)
     registration_complete: bool = False
+    registry_locked: bool = False
     registry_confidence: float | None = None
     final_score: FinalScoreSnapshot = field(default_factory=FinalScoreSnapshot)
 
@@ -107,6 +108,11 @@ class KillfeedCountSnapshot:
     kills: int = 0
     deaths: int = 0
     trades: int = 0
+    name_detections: int = 0
+    resolved_name_detections: int = 0
+    player_detection_counts: dict[str, int] = field(default_factory=dict)
+    player_kills: dict[str, int] = field(default_factory=dict)
+    player_deaths: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

@@ -16,12 +16,14 @@ DEFAULT_OUTPUT_DIR = Path("/Users/juniorbenitez/Documents/main project/personal_
 SECTION_ALIASES = {
     "scoreboard": "scoreboard_registration",
     "scoreboard_registration": "scoreboard_registration",
+    "killfeed": "killfeed",
     "utility": "utility",
     "hardpoint": "hardpoint",
 }
 
 SECTION_COLORS = {
     "scoreboard_registration": (0, 255, 255),
+    "killfeed": (0, 128, 255),
     "utility": (0, 255, 0),
     "hardpoint": (255, 255, 0),
 }
