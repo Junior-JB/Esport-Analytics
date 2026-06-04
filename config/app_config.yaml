@@ -1,0 +1,193 @@
+capture:
+  video_path: /Users/juniorbenitez/Desktop/vod/2026-05-29 14-44-38.mkv
+  max_capture_samples_per_second: 30.0
+  start_time: '3:12'
+testing:
+  current_focus: hardpoint
+scheduling:
+  scoreboard_registration:
+    samples_per_second: 1.0
+  killfeed:
+    samples_per_second: 3.0
+  utility:
+    samples_per_second: 4.0
+  hardpoint:
+    samples_per_second: 2.0
+scoreboard_registration:
+  enabled: true
+  required_player_count: 8
+  disable_after_registration: false
+  refine_registry_after_registration: true
+  registration_min_slot_observations: 2
+  registration_min_slot_confidence: 0.72
+  final_score_authoritative_value: 250
+  roi_preview_mode: true
+  preserve_debug_artifacts: false
+  debug_every_visible_frame: false
+  visibility:
+    scoreboard_min_fill_ratio: 0.03
+    header_template_path: /Users/juniorbenitez/Documents/main project/personal_project/assets/scoreboard_visibility/scoreboard_header_presence_template.png
+    header_template_min_similarity: 0.7
+  absolute_regions:
+    scoreboard_roi:
+      x: 0.16
+      y: 0.12
+      width: 0.75
+      height: 0.425
+    scoreboard_header_roi:
+      x: 0.48
+      y: 0.164
+      width: 0.0415
+      height: 0.07
+    friendly_slot_1:
+      x: 0.185
+      y: 0.29
+      width: 0.10
+      height: 0.03
+    friendly_slot_2:
+      x: 0.185
+      y: 0.331
+      width: 0.10
+      height: 0.03
+    friendly_slot_3:
+      x: 0.185
+      y: 0.3725
+      width: 0.10
+      height: 0.03
+    friendly_slot_4:
+      x: 0.185
+      y: 0.415
+      width: 0.10
+      height: 0.03
+    enemy_slot_1:
+      x: 0.58
+      y: 0.29
+      width: 0.10
+      height: 0.03
+    enemy_slot_2:
+      x: 0.58
+      y: 0.331
+      width: 0.10
+      height: 0.03
+    enemy_slot_3:
+      x: 0.58
+      y: 0.3725
+      width: 0.10
+      height: 0.03
+    enemy_slot_4:
+      x: 0.58
+      y: 0.415
+      width: 0.10
+      height: 0.03
+    final_blue_score_roi:
+      x: 0.42
+      y: 0.1725
+      width: 0.06
+      height: 0.05
+    final_red_score_roi:
+      x: 0.525
+      y: 0.172
+      width: 0.06
+      height: 0.05
+killfeed:
+  enabled: false
+  requires_registration: true
+  ocr_engine: easyocr
+  extract:
+  - kills
+  - deaths
+  - trades
+utility:
+  enabled: true
+  requires_registration: false
+  absolute_regions:
+    grenade:
+      x: 0.8786458333333333
+      y: 0.7057037037037036
+      width: 0.009750000000000002
+      height: 0.023518518518518515
+    stun:
+      x: 0.8430416666666667
+      y: 0.7047777777777777
+      width: 0.011833333333333335
+      height: 0.021666666666666664
+    specialty_equipment:
+      x: 0.962604
+      y: 0.791259
+      width: 0.002604
+      height: 0.02263
+  binary_state_template_size:
+  - 18
+  - 24
+  binary_state_min_score: 0.6
+  binary_state_min_margin: 0.18
+  specialty_orange_hue_min: 7
+  specialty_orange_hue_max: 13
+  specialty_orange_saturation_min: 160
+  specialty_orange_value_min: 110
+  specialty_orange_ratio_threshold: 0.73
+  specialty_activation_confirmation_frames: 2
+  specialty_absence_seconds: 25.0
+  count_only:
+  - grenade
+  - stun
+  - specialty_equipment
+hardpoint:
+  enabled: true
+  requires_registration: false
+  ocr_engine: easyocr
+  absolute_regions:
+    blue_score:
+      x: 0.023333333333333334
+      y: 0.375
+      width: 0.03270833333333333
+      height: 0.022037037037037042
+    red_score:
+      x: 0.021770833333333333
+      y: 0.40629629629629627
+      width: 0.03322916666666667
+      height: 0.027592592592592596
+    hill_number:
+      x: 0.0353125
+      y: 0.44685185185185183
+      width: 0.016104166666666666
+      height: 0.0312962962962963
+  score_min: 0
+  score_max: 250
+  hill_min: 1
+  hill_max: 5
+  score_min_confidence: 0.7
+  single_digit_score_min_confidence: 0.8
+  hill_min_confidence: 0.85
+  score_max_delta_from_last: 15
+  score_thickness_min_ratio: 0.08
+  score_thickness_max_ratio: 0.55
+  upscale_factor: 4.0
+  score_threshold_bias: 30.0
+  score_template_root: /Users/juniorbenitez/Documents/main project/personal_project/assets/score_digit_templates
+  score_template_size:
+  - 18
+  - 24
+  score_digit_min_similarity: 0.45
+  score_number_min_confidence: 0.55
+  score_segment_min_fill_ratio: 0.10
+  score_leading_artifact_max_width_ratio: 0.20
+  score_leading_artifact_max_confidence: 0.55
+  track_only:
+  - blue_score
+  - red_score
+  - current_hill
+dashboard:
+  mode: validation_only
+  display:
+  - registered_players
+  - killfeed_counts
+  - utility_counts
+  - blue_score
+  - red_score
+  - current_hill
+  - ocr_confidence
+  - module_status
+debug:
+  cleanup_old_runs: true
+  keep_recent_runs: 1
