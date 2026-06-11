@@ -1,9 +1,6 @@
-from sqlalchemy import true
+
 import streamlit as st
 import pandas as pd
-import numpy as np
-import altair as alt
-from vega_datasets import data  
 import plotly.express as px
 from PIL import Image
 from pathlib import Path
@@ -91,12 +88,9 @@ with filter_bar:
     st.title("Sidebar filters will go here.")
 
 
-
-
-
 kpi_container = st.container(key="kpis", width="stretch",border=False )
 with kpi_container:
-    col_1, col_2,final_score_col, col_3, col_4, col_5= st.columns(6,border=True,gap="large")  
+    col_1, col_2,final_score_col, col_3, col_4, col_5= st.columns(6,border=True,gap="small")  
     with col_1:
 
         player_name=st.selectbox( label = "name",options = df2.columns[1:9])
@@ -113,45 +107,30 @@ with kpi_container:
     with final_score_col:
         Ally_score = Score_df.loc[0, "blue_final_score"]
         Enemy_score= Score_df.loc[0,"red_final_score"]  
-        st.markdown(
-            f"""
-            <div style="
-                display:flex;
-                flex-direction:column;
-                justify-content:center;
-                align-items:center;
-            ">
-                <div style="font-size:20px;">
-                    <b>Final Score</b>
-                </div>
-
-                <div style="
-                    display:flex;
-                    align-items:center;
-                    font-size:40px;
-                ">
-                    <span style="color:blue">
-                        <b>{Ally_score}</b>
-                    </span>
-
-                    <span style="margin:0 15px;">
-                        <b>VS</b>
-                    </span>
-
-                    <span style="color:red">
-                        <b>{Enemy_score}</b>
-                    </span>
-                </div>
+        st.markdown(f""" 
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center">
+            <div style="font-size:26px">
+                <b>Final Score</b>
             </div>
-            """,
-            unsafe_allow_html=True
-                
+            <div style="display:flex;font-size:35px;align-item:center;">
+                <span style="color:blue">
+                    <b>{Ally_score}</b>
+                </span>
+                <span style="margin:0 10px">
+                    <b>VS</b>
+                </span>
+                <span style="color:red">
+                    <b>{Enemy_score}</b>
+                </span>
+            </div>
+        
+        </div>
 
 
 
 
 
-        )
+        """,unsafe_allow_html= True)
     
     
     with col_3:
@@ -319,7 +298,25 @@ with chart_row_1:
         with st.container(key= "chart_3",border=True):
 
             fig_2 = px.bar(per_hill_df,x="hill_number", y=["nades_delta","stuns_delta","specialties_delta"],title = "Utility Usage by Hill",barmode = "stack")
-            fig_2.update_layout(legend=dict(orientation ="h",yanchor ="top", y= -0.15, xanchor = "center", x=0.5), margin=dict(t=20,b=50),height =415,title_x = 0.4)
+            fig_2.for_each_trace(
+                lambda t: t.update(
+                    name={
+                        "nades_delta": "Grendades",
+                        "stuns_delta": "Tacticals",
+                        "specialties_delta": "Field Upgrade"
+                    }[t.name]
+                )
+            )
+            fig_2.update_layout(legend=dict(orientation ="h",yanchor ="top", y= -0.15, xanchor = "center", x=0.5), margin=dict(t=20,b=50),height =415,title_x = 0.4,xaxis_title ="Hill Number", yaxis_title="Utility Used", 
+            title=dict(
+                text="Utility Usage By Hill",
+                x=0.5,
+                y=0.98,
+                font=dict(size=26)
+                
+                )
+                
+            )
             
 
             st.plotly_chart(fig_2, use_container_width=True)
@@ -345,7 +342,7 @@ with chart_row_1:
             })
 
             fig = px.pie(data_parse,
-                names = "category", values ="Kills", hole= 0.5,title ="percentge of team kills", color_discrete_sequence=["#0000FF", "#FFEE00"])
+                names = "category", values ="Kills", hole= 0.5, color_discrete_sequence=["#0000FF", "#FFEE00"])
             fig.update_layout(showlegend=False,
                               
                 annotations=[
@@ -354,10 +351,19 @@ with chart_row_1:
                         text=f"<b>total team kills</b><br>{team_total_kills}",
                         x=0.5,
                         y=0.5,
-                        font_size=15,
+                        font_size=13,
                         showarrow=False
                     )
-                ],height= 415, title_x =0.28, title_y = 0.98
+                ],
+                
+                title=dict(
+                    text=f"<b>Percentage of Team Kills<b>",
+                    x=0.22,
+                    y=0.98,
+                    font=dict(size=26)
+                    
+
+                ),height=415
                               
             )
             st.plotly_chart(fig, use_container_width= True)
@@ -369,12 +375,25 @@ chart_row_2 = st.container (key ="data2" , width = "stretch",height= 500,border 
 with chart_row_2:
     col_1, col_2 = st.columns(2, gap="small", border=True)
     with col_1:
-        st.title("Score over time" , text_alignment = "center")
+        st.markdown(f"""
+        <p style="font-size:26px;text-align:center;">
+            <b>Score Overtime</b>
+        </p>
+        """,unsafe_allow_html=True)
+
+
+
         st.line_chart (data = df, x = "timestamp", y = ["red_score", "blue_score"],
-            color =["#FF0000", "#0000FF"]
+            color =["#FF0000", "#0000FF"], y_label="Score", x_label="Time (s)"
         )
     with col_2:
-       st.line_chart (df, x = "timestamp", y = [f"{player_name}"] )
+       st.markdown(f"""
+        <p style="font-size:26px;text-align:center;">
+            <b>Player Kills Overtime</b>
+        </p>
+
+        """, unsafe_allow_html= True)
+       st.line_chart (df, x = "timestamp", y = [f"{player_name}"],x_label="Time (s)",)
         
         
 
