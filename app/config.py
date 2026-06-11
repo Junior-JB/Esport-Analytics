@@ -32,13 +32,42 @@ class AppConfig:
     """Small wrapper around raw YAML configuration."""
 
     raw: dict
+    config_path: Path
 
     @classmethod
     def load(cls, config_path: str | Path) -> "AppConfig":
         """Load the scaffold configuration file."""
         path = Path(config_path)
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        return cls(raw=data)
+        instance = cls(raw=data, config_path=path.resolve())
+        instance._resolve_repo_local_paths()
+        return instance
+
+    def _resolve_repo_local_paths(self) -> None:
+        """Resolve in-repo asset paths relative to the config file location."""
+        self._resolve_nested_path(
+            ["scoreboard_registration", "visibility", "header_template_path"]
+        )
+        self._resolve_nested_path(
+            ["hardpoint", "score_template_root"]
+        )
+
+    def _resolve_nested_path(self, keys: list[str]) -> None:
+        """Resolve one nested path entry when it is relative."""
+        cursor = self.raw
+        for key in keys[:-1]:
+            next_cursor = cursor.get(key)
+            if not isinstance(next_cursor, dict):
+                return
+            cursor = next_cursor
+        leaf_key = keys[-1]
+        value = cursor.get(leaf_key)
+        if not value:
+            return
+        path_value = Path(str(value))
+        if path_value.is_absolute():
+            return
+        cursor[leaf_key] = str((self.config_path.parent / path_value).resolve())
 
     @property
     def capture(self) -> dict:

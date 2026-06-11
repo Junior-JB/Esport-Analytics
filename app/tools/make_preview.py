@@ -8,10 +8,10 @@ from pathlib import Path
 import cv2
 import yaml
 
-
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_VIDEO_PATH = Path("/Users/juniorbenitez/Desktop/vod/2026-05-29 14-44-38.mkv")
-DEFAULT_CONFIG_PATH = Path("/Users/juniorbenitez/Documents/main project/personal_project/config/app_config.yaml")
-DEFAULT_OUTPUT_DIR = Path("/Users/juniorbenitez/Documents/main project/personal_project/debug_previews")
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "app_config.yaml"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "debug_previews"
 
 SECTION_ALIASES = {
     "scoreboard": "scoreboard_registration",

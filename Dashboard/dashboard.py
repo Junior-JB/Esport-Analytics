@@ -5,16 +5,22 @@ import numpy as np
 import altair as alt
 from vega_datasets import data  
 import plotly.express as px
-
+from PIL import Image
+from pathlib import Path
 
 
 
 st.set_page_config(layout="wide")
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEBUG_VALIDATION_DIR = PROJECT_ROOT / "debug_validation"
+ASSETS_DIR = PROJECT_ROOT / "assets" / "images_dashboard"
 
-df = pd.read_csv('/Users/juniorbenitez/Documents/main project/personal_project/debug_validation/telemetry_timeseries.csv')
+Score_df = pd.read_csv(DEBUG_VALIDATION_DIR / "final_score.csv")
 
-df2 = pd.read_csv('/Users/juniorbenitez/Documents/main project/personal_project/debug_validation/match_summary.csv')
+df = pd.read_csv(DEBUG_VALIDATION_DIR / "telemetry_timeseries.csv")
+
+df2 = pd.read_csv(DEBUG_VALIDATION_DIR / "match_summary.csv")
 
 utility_df= df[
     [
@@ -58,6 +64,13 @@ grouped_df = player_df.groupby("team")[numeric_cols].sum()
 
 
 
+Enemy_image = Image.open(ASSETS_DIR / "Enemy_player.png")
+target_height =80
+target_width = 80
+Resize_enemy_image= Enemy_image.resize((target_width,target_width))
+
+Ally_image = Image.open(ASSETS_DIR / "ally_player.png")
+resize_ally_image = Ally_image.resize((target_width,target_height))
 
 
 
@@ -68,11 +81,9 @@ grouped_df = player_df.groupby("team")[numeric_cols].sum()
 
 
 
-
-
-#title_container = st.container(key="title", width="stretch", height="content")
-#with title_container:
-    #st.title("ESPORTS DASHBOARD", text_alignment="center")
+title_container = st.container(key="title", width="stretch", height=100,border= False)
+with title_container:
+    st.title("ESPORTS DASHBOARD", text_alignment="center")
 
 
 filter_bar = st.sidebar
@@ -83,44 +94,115 @@ with filter_bar:
 
 
 
-kpi_container = st.container(key="kpis", width="stretch", height = 140,border=False)
+kpi_container = st.container(key="kpis", width="stretch",border=False )
 with kpi_container:
-    col_1, col_2, col_3, col_4, col_5 = st.columns(5,gap="small",border=True)  
+    col_1, col_2,final_score_col, col_3, col_4, col_5= st.columns(6,border=True,gap="large")  
     with col_1:
 
         player_name=st.selectbox( label = "name",options = df2.columns[1:9])
     
     with col_2:
-        st.write("KD")
-        st.write(df2.loc[1, player_name])
+        kd = df2.loc[1, player_name]
+        st.markdown(f"""
+        <p style="font-size:26px; font-weight:bold; text-align:center;">
+            KD<br>
+            {kd}
+        </p>
+                    
+        """, unsafe_allow_html= True)
+    with final_score_col:
+        Ally_score = Score_df.loc[0, "blue_final_score"]
+        Enemy_score= Score_df.loc[0,"red_final_score"]  
+        st.markdown(
+            f"""
+            <div style="
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                align-items:center;
+            ">
+                <div style="font-size:20px;">
+                    <b>Final Score</b>
+                </div>
+
+                <div style="
+                    display:flex;
+                    align-items:center;
+                    font-size:40px;
+                ">
+                    <span style="color:blue">
+                        <b>{Ally_score}</b>
+                    </span>
+
+                    <span style="margin:0 15px;">
+                        <b>VS</b>
+                    </span>
+
+                    <span style="color:red">
+                        <b>{Enemy_score}</b>
+                    </span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+                
+
+
+
+
+
+        )
+    
     
     with col_3:
-        st.write ("gernade usage")
-        st.write(df2.loc[4, "all_match"])
+
+        Grenade_usage = int(df2.loc[4, "all_match"])
+        st.markdown(f"""
+        <p style="font-size:26px; font-weight:bold; text-align:center;">
+            Grenade Usage<br>
+            {Grenade_usage}
+        </p>
+        
+                    
+        """,unsafe_allow_html=True)
+
     
     
     with col_4:
-        st.write("tactical usage")
-        tactical_usage = str(df2.loc[5, "all_match"])
-        st.write(tactical_usage)
+        tactical_usage = int(df2.loc[5, "all_match"])
+        st.markdown(f"""
+        <p style="font-size:26px; font-weight:bold; text-align:center;">
+            Tactical Usage<br>
+           {tactical_usage}
+        </p>                    
+                    
+        """,unsafe_allow_html=True)
+
     
     with col_5:
-        st.write("speciality usage")
-        st.write(df2.loc[6, "all_match"])
+        Field_upgrade = int(df2.loc[6, "all_match"])
+        st.markdown(f"""
+        <p style="font-size:26px; font-weight:bold; text-align:center;">
+            Field Upgrade<br>
+            {Field_upgrade}
+        </p>
+
+        """,unsafe_allow_html=True)
+
         
 
 
 
 chart_row_1 = st.container(key = "data" , width = "stretch")
 with chart_row_1:
-    chart_1_col_1, chart_3_col_3, chart_4_col_4 = st.columns([1.4,0.8,0.8])
+    chart_1_col_1, chart_3_col_3, chart_4_col_4 = st.columns([1.0,01.2,0.8])
     with chart_1_col_1:
         chart_5_col_1, chart_5_col_2 = st.columns([1,1])
         with chart_5_col_1:
             with st.container(key="ally_row_1", border=True,height = 100):
                 col_player_1_image, col_player_1_kd = st.columns([0.7,1])
                 with col_player_1_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/ally_player.png", width="content")
+                    st.image(resize_ally_image )
 
                 with col_player_1_kd:
                     st.markdown(f"""
@@ -134,7 +216,7 @@ with chart_row_1:
             with st.container(key="ally_row_2", border=True,height=100):
                 col_player_2_image, col_player_2_kd = st.columns([0.7,1])
                 with col_player_2_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/ally_player.png")
+                    st.image(resize_ally_image)
                 with col_player_2_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
@@ -145,22 +227,22 @@ with chart_row_1:
                     """, unsafe_allow_html=True)
                     
             with st.container(key="ally_row_3", border=True,height=100):
-                col_player_3_image, col_player_3_kd = st.columns([0.7,1], vertical_alignment="center")
+                col_player_3_image, col_player_3_kd = st.columns([0.7,1])
                 with col_player_3_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/ally_player.png")
+                    st.image(resize_ally_image)
                 with col_player_3_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
                         <b>{df2.columns[3]} </b><br> 
                         KD: {df2.iloc[1,3]}
-                                
+                             
                         </div>                                  
                     """, unsafe_allow_html=True)
 
             with st.container(key="ally_row_4", border=True,height =100):
                 col_player_4_image, col_player_4_kd = st.columns([0.7,1])
                 with col_player_4_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/ally_player.png")
+                    st.image(resize_ally_image)
                 with col_player_4_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
@@ -178,7 +260,7 @@ with chart_row_1:
             with st.container(key="enemy_row_1",height = 100):
                 col_player_5_image, col_player_5_kd = st.columns([0.7,1])
                 with col_player_5_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/Enemy_player.png")
+                    st.image(Resize_enemy_image)
 
                 with col_player_5_kd:
                     st.markdown(f"""
@@ -192,7 +274,7 @@ with chart_row_1:
             with st.container(key="enemy_row_2", border=True,height=100):
                 col_player_6_image, col_player_6_kd = st.columns([0.7,1])
                 with col_player_6_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/Enemy_player.png")
+                    st.image(Resize_enemy_image)
                 with col_player_6_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
@@ -205,7 +287,7 @@ with chart_row_1:
             with st.container(key="enemy_row_3", border=True,height=100):
                 col_player_7_image, col_player_7_kd = st.columns([0.7,1])
                 with col_player_7_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/Enemy_player.png")
+                    st.image(Resize_enemy_image)
                 with col_player_7_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
@@ -218,7 +300,7 @@ with chart_row_1:
             with st.container(key="enemy_row_4", border=True,height =100):
                 col_player_8_image, col_player_8_kd = st.columns([0.7,1])
                 with col_player_8_image:
-                    st.image("/Users/juniorbenitez/Documents/main project/personal_project/assets/images_dashboard/Enemy_player.png")
+                    st.image(Resize_enemy_image)
                 with col_player_8_kd:
                     st.markdown(f"""
                         <div style="font=size:24;"
@@ -234,59 +316,56 @@ with chart_row_1:
             
 
     with chart_3_col_3:
-        with st.container(key= "chart_3",border=True,height= 400):
+        with st.container(key= "chart_3",border=True):
 
-            st.bar_chart(per_hill_df,y='hill_number',x="stuns_delta")
-
-
-
+            fig_2 = px.bar(per_hill_df,x="hill_number", y=["nades_delta","stuns_delta","specialties_delta"],title = "Utility Usage by Hill",barmode = "stack")
+            fig_2.update_layout(legend=dict(orientation ="h",yanchor ="top", y= -0.15, xanchor = "center", x=0.5), margin=dict(t=20,b=50),height =415,title_x = 0.4)
             
 
-
-    
-
-
-
+            st.plotly_chart(fig_2, use_container_width=True)
+            
 
 
 
     with chart_4_col_4:
-        with st.container(key="chart_4",border=True):
+        with st.container(key="chart_4",border=True,width="stretch",height = 450):
             #uses parsed name to get total kills of a team and put that over a single players kill used for chart 4
             player_team = df2.loc[0,player_name]
             team_total_kills = grouped_df.loc[player_team, "total_kills"]
-            print(team_total_kills)
             player_kill = df2.loc[2,player_name]
             player_kill = pd.to_numeric(player_kill)
-            print(player_kill)
-            st.write("h")
-            data_parse = [player_kill,team_total_kills]
-            st.write(data_parse)
-            #chart_4_data = pd.DataFrame()
-            #fig = px.pie(names = player_name,values = [player_kill,team_total_kills], hole= 0.5,title="fig" )
-            #st.plotly_chart(fig)
-            
-
-print(data_parse)
-            
-            
-
+            remaining_team_kills = (team_total_kills - player_kill)
+            remaining_team_kills = pd.to_numeric(remaining_team_kills)
 
             
+            data_parse = pd.DataFrame({
+                "category":["player_kills","remaining_team_kills"],
+                "Kills": [player_kill,remaining_team_kills]
+                
+            })
 
+            fig = px.pie(data_parse,
+                names = "category", values ="Kills", hole= 0.5,title ="percentge of team kills", color_discrete_sequence=["#0000FF", "#FFEE00"])
+            fig.update_layout(showlegend=False,
+                              
+                annotations=[
+                    dict(
 
+                        text=f"<b>total team kills</b><br>{team_total_kills}",
+                        x=0.5,
+                        y=0.5,
+                        font_size=15,
+                        showarrow=False
+                    )
+                ],height= 415, title_x =0.28, title_y = 0.98
+                              
+            )
+            st.plotly_chart(fig, use_container_width= True)
+            
 
+            
 
-
-
-
-
-
-
-
-
-
-chart_row_2 = st.container (key ="data2" , width = "stretch",height= 500)
+chart_row_2 = st.container (key ="data2" , width = "stretch",height= 500,border = False)
 with chart_row_2:
     col_1, col_2 = st.columns(2, gap="small", border=True)
     with col_1:
@@ -302,5 +381,4 @@ with chart_row_2:
 
 
     
-
 

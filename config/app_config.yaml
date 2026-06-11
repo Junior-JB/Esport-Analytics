@@ -26,7 +26,7 @@ scoreboard_registration:
   debug_every_visible_frame: false
   visibility:
     scoreboard_min_fill_ratio: 0.03
-    header_template_path: /Users/juniorbenitez/Documents/main project/personal_project/assets/scoreboard_visibility/scoreboard_header_presence_template.png
+    header_template_path: ../assets/scoreboard_visibility/scoreboard_header_presence_template.png
     header_template_min_similarity: 0.7
   absolute_regions:
     scoreboard_roi:
@@ -180,7 +180,7 @@ hardpoint:
   score_thickness_max_ratio: 0.55
   upscale_factor: 4.0
   score_threshold_bias: 30.0
-  score_template_root: /Users/juniorbenitez/Documents/main project/personal_project/assets/score_digit_templates
+  score_template_root: ../assets/score_digit_templates
   score_template_size:
   - 18
   - 24
