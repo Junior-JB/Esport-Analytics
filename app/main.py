@@ -85,6 +85,13 @@ def main() -> int:
     second_pass.bundle.hardpoint.status = ModuleStatus.DISABLED
     second_pass_frames_processed, final_summary_path = run_pipeline_pass(config, second_pass)
 
+    second_pass.bundle.utility.snapshot = copy.deepcopy(first_pass.bundle.utility.snapshot)
+    second_pass.bundle.hardpoint.snapshot = copy.deepcopy(first_pass.bundle.hardpoint.snapshot)
+    second_pass.dashboard.update_utility(second_pass.bundle.utility.snapshot)
+    second_pass.dashboard.update_hardpoint(second_pass.bundle.hardpoint.snapshot)
+    second_pass.set_telemetry_merge_base_rows(first_pass.telemetry_rows)
+    final_summary_path = second_pass.finalize()
+
     dashboard = second_pass.dashboard.snapshot()
     print("Second pass complete.")
     print(f"Frames processed: {second_pass_frames_processed}")

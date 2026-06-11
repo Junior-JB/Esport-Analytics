@@ -33,6 +33,8 @@ class KillfeedResolvedName:
     confidence: float
     box: tuple[int, int, int, int]
     raw_text: str = ""
+    source_variant: str = ""
+    preferred_team: str | None = None
 
 
 @dataclass(slots=True)
@@ -80,6 +82,7 @@ class KillfeedModule(PipelineModule):
         self.name_min_length = int(self.config.get("name_min_length", 3))
         self.max_names_per_row = int(self.config.get("max_names_per_row", 2))
         self.event_name_min_confidence = float(self.config.get("event_name_min_confidence", 0.55))
+        self.team_anchor_confidence = float(self.config.get("team_anchor_confidence", 0.70))
         self.victim_cooldown_seconds = float(self.config.get("victim_cooldown_seconds", 3.0))
         self.thread_match_seconds = float(self.config.get("thread_match_seconds", 1.5))
         self.thread_forget_seconds = float(
@@ -117,6 +120,12 @@ class KillfeedModule(PipelineModule):
             return
 
         registry_players = {player.name: player for player in match_context.players}
+        friendly_registry_players = {
+            player.name: player for player in match_context.players if player.team == "friendly"
+        }
+        enemy_registry_players = {
+            player.name: player for player in match_context.players if player.team == "enemy"
+        }
         grayscale = cv2.cvtColor(killfeed_crop, cv2.COLOR_BGR2GRAY)
         current_binary = self._prepare_row(grayscale)
         roi_change_score = self._score_row_change(current_binary, self._previous_binary)
@@ -126,6 +135,8 @@ class KillfeedModule(PipelineModule):
         new_states = self._detect_roi_rows(
             killfeed_crop=killfeed_crop,
             registry_players=registry_players,
+            friendly_registry_players=friendly_registry_players,
+            enemy_registry_players=enemy_registry_players,
             change_score=roi_change_score,
             readability_score=roi_readability,
         )
@@ -148,6 +159,8 @@ class KillfeedModule(PipelineModule):
         self._last_confidence = self._average_confidence(resolved_confidences)
         self.snapshot.name_detections += name_detection_count
         self.snapshot.resolved_name_detections += resolved_name_detection_count
+        self.snapshot.row_groups_detected += len(new_states)
+        self.snapshot.single_side_row_groups += sum(1 for state in new_states if len(state.resolved_names) < 2)
         for player_name, increment in player_detection_increments.items():
             self.snapshot.player_detection_counts[player_name] = (
                 self.snapshot.player_detection_counts.get(player_name, 0) + increment
@@ -176,6 +189,8 @@ class KillfeedModule(PipelineModule):
         self,
         killfeed_crop: np.ndarray,
         registry_players: dict[str, object],
+        friendly_registry_players: dict[str, object],
+        enemy_registry_players: dict[str, object],
         change_score: float,
         readability_score: float,
     ) -> list[KillfeedRowState]:
@@ -183,16 +198,34 @@ class KillfeedModule(PipelineModule):
         if not registry_players:
             return []
 
-        prepared = self._prepare_easyocr_crop(killfeed_crop)
         reader = self._ensure_reader()
-        results = reader.readtext(prepared, detail=1)
+        variant_candidates_by_name: dict[str, list[KillfeedResolvedName]] = {}
+        for variant_name, prepared in self._prepare_easyocr_variants(killfeed_crop).items():
+            results = reader.readtext(prepared, detail=1)
+            if variant_name == "red":
+                match_pool = enemy_registry_players
+            elif variant_name == "blue":
+                match_pool = friendly_registry_players
+            else:
+                match_pool = registry_players
+            _, variant_candidates = self._resolve_ocr_results(
+                results=results,
+                registry_players=match_pool,
+                x_offset=0,
+                source_variant=variant_name,
+            )
+            variant_candidates_by_name[variant_name] = self._dedupe_resolved_candidates(variant_candidates)
 
-        _, resolved_candidates = self._resolve_ocr_results(
-            results=results,
-            registry_players=registry_players,
-            x_offset=0,
+        resolved_candidates: list[KillfeedResolvedName] = []
+        for candidates in variant_candidates_by_name.values():
+            resolved_candidates.extend(candidates)
+        resolved_candidates = self._dedupe_resolved_candidates(resolved_candidates)
+        red_candidates = variant_candidates_by_name.get("red", [])
+        reference_candidates = self._build_reference_candidates(
+            red_candidates=red_candidates,
+            all_candidates=resolved_candidates,
         )
-        grouped_candidates = self._group_candidates_into_rows(resolved_candidates)
+        grouped_candidates = self._group_candidates_into_rows(reference_candidates)
 
         row_states: list[KillfeedRowState] = []
         for row_index, group in enumerate(grouped_candidates):
@@ -216,6 +249,7 @@ class KillfeedModule(PipelineModule):
         results,
         registry_players: dict[str, object],
         x_offset: int,
+        source_variant: str,
     ) -> tuple[list[str], list[KillfeedResolvedName]]:
         """Resolve one OCR result set into raw texts and registry-backed candidates."""
         raw_texts: list[str] = []
@@ -247,6 +281,7 @@ class KillfeedModule(PipelineModule):
                         flattened_box[3],
                     ),
                     raw_text=candidate_text,
+                    source_variant=source_variant,
                 )
             )
 
@@ -291,24 +326,86 @@ class KillfeedModule(PipelineModule):
         if not group:
             return []
         sorted_candidates = sorted(group, key=lambda item: (item.box[0], item.box[1]))
-        left_name = sorted_candidates[0]
+        left_name = self._prefer_team_on_side(sorted_candidates, side="left")
         if len(sorted_candidates) == 1:
             return [left_name]
 
-        right_name = max(sorted_candidates, key=lambda item: (item.box[0] + item.box[2], item.confidence))
-        if left_name.player_id == right_name.player_id:
+        right_name = self._prefer_team_on_side(sorted_candidates, side="right")
+        opposite_for_left = self._best_opposite_team_candidate(
+            candidates=sorted_candidates,
+            anchor=left_name,
+            side="right",
+        )
+        opposite_for_right = self._best_opposite_team_candidate(
+            candidates=sorted_candidates,
+            anchor=right_name,
+            side="left",
+        )
+
+        if left_name.confidence >= self.team_anchor_confidence and opposite_for_left is not None:
+            right_name = opposite_for_left
+        elif right_name.confidence >= self.team_anchor_confidence and opposite_for_right is not None:
+            left_name = opposite_for_right
+        elif left_name.team == right_name.team or left_name.player_id == right_name.player_id:
+            if opposite_for_left is not None:
+                right_name = opposite_for_left
+            elif opposite_for_right is not None:
+                left_name = opposite_for_right
+
+        if left_name.player_id == right_name.player_id or left_name.team == right_name.team:
             alternatives = [item for item in sorted_candidates if item.player_id != left_name.player_id]
             if not alternatives:
                 return [left_name]
-            right_name = max(alternatives, key=lambda item: (item.box[0] + item.box[2], item.confidence))
+            right_name = self._prefer_team_on_side(alternatives, side="right")
         return sorted([left_name, right_name], key=lambda item: (item.box[0], item.box[1]))
+
+    @staticmethod
+    def _prefer_team_on_side(
+        candidates: list[KillfeedResolvedName],
+        side: str,
+    ) -> KillfeedResolvedName:
+        """Prefer candidates whose team hint matches the side expectation, if present."""
+        if side == "left":
+            hinted = [candidate for candidate in candidates if candidate.preferred_team in {None, "friendly"}]
+            pool = hinted or candidates
+            return min(pool, key=lambda item: (item.box[0], item.box[1], -item.confidence))
+        hinted = [candidate for candidate in candidates if candidate.preferred_team in {None, "enemy"}]
+        pool = hinted or candidates
+        return max(pool, key=lambda item: (item.box[0] + item.box[2], item.confidence))
+
+    @staticmethod
+    def _best_opposite_team_candidate(
+        candidates: list[KillfeedResolvedName],
+        anchor: KillfeedResolvedName,
+        side: str,
+    ) -> KillfeedResolvedName | None:
+        """Pick the strongest candidate from the opposite team on the requested side."""
+        pool = [
+            candidate
+            for candidate in candidates
+            if candidate.player_id != anchor.player_id
+            and candidate.team != anchor.team
+        ]
+        if side == "right":
+            pool = [candidate for candidate in pool if candidate.box[0] >= anchor.box[0]]
+            if not pool:
+                return None
+            return max(pool, key=lambda item: (item.box[0] + item.box[2], item.confidence))
+        pool = [candidate for candidate in pool if candidate.box[0] <= anchor.box[0]]
+        if not pool:
+            return None
+        return min(pool, key=lambda item: (-item.confidence, item.box[0]))
 
     def _apply_row_event(self, state: KillfeedRowState, timestamp_seconds: float) -> None:
         """Apply kill/death telemetry when a row yields two legible sides."""
         self._prune_event_threads(timestamp_seconds)
-        thread = self._match_or_create_thread(state, timestamp_seconds)
+        thread, created = self._match_or_create_thread(state, timestamp_seconds)
         if thread is None:
             return
+        if created:
+            self.snapshot.event_threads_created += 1
+        else:
+            self.snapshot.event_threads_reused += 1
         if thread.counted:
             return
         left_name = thread.left_name
@@ -316,12 +413,18 @@ class KillfeedModule(PipelineModule):
         if left_name is None or right_name is None:
             return
         if left_name.player_id == right_name.player_id:
+            self.snapshot.events_blocked_same_side += 1
+            return
+        if left_name.team == right_name.team:
+            self.snapshot.events_blocked_same_side += 1
             return
         if left_name.confidence < self.event_name_min_confidence or right_name.confidence < self.event_name_min_confidence:
+            self.snapshot.events_blocked_low_confidence += 1
             return
 
         victim_last_seen = self._victim_last_seen.get(right_name.player_id)
         if victim_last_seen is not None and (timestamp_seconds - victim_last_seen) < self.victim_cooldown_seconds:
+            self.snapshot.events_blocked_victim_cooldown += 1
             return
 
         self._victim_last_seen[right_name.player_id] = timestamp_seconds
@@ -329,6 +432,7 @@ class KillfeedModule(PipelineModule):
 
         self.snapshot.kills += 1
         self.snapshot.deaths += 1
+        self.snapshot.events_counted += 1
         self.snapshot.player_kills[left_name.name] = self.snapshot.player_kills.get(left_name.name, 0) + 1
         self.snapshot.player_deaths[right_name.name] = self.snapshot.player_deaths.get(right_name.name, 0) + 1
 
@@ -352,12 +456,12 @@ class KillfeedModule(PipelineModule):
         self,
         state: KillfeedRowState,
         timestamp_seconds: float,
-    ) -> KillfeedEventThread | None:
+    ) -> tuple[KillfeedEventThread | None, bool]:
         """Merge a row state into an existing vertical-band thread or create a new one."""
         left_name = state.resolved_names[0] if state.resolved_names else None
         right_name = state.resolved_names[-1] if len(state.resolved_names) >= 2 else None
         if left_name is None and right_name is None:
-            return None
+            return None, False
 
         best_thread: KillfeedEventThread | None = None
         best_distance: float | None = None
@@ -373,15 +477,17 @@ class KillfeedModule(PipelineModule):
                 best_thread = thread
                 best_distance = vertical_distance
 
+        created = False
         if best_thread is None:
             best_thread = KillfeedEventThread(center_y=state.center_y, last_seen=timestamp_seconds)
             self._event_threads.append(best_thread)
+            created = True
 
         best_thread.last_seen = timestamp_seconds
         best_thread.center_y = state.center_y
         best_thread.left_name = self._prefer_name(best_thread.left_name, left_name)
         best_thread.right_name = self._prefer_name(best_thread.right_name, right_name)
-        return best_thread
+        return best_thread, created
 
     @staticmethod
     def _thread_names_compatible(
@@ -457,6 +563,191 @@ class KillfeedModule(PipelineModule):
             binary = cv2.bitwise_not(binary)
         return binary
 
+    def _prepare_easyocr_variants(self, killfeed_crop: np.ndarray) -> dict[str, np.ndarray]:
+        """Build multiple OCR prep variants so colored text can stand out from the background."""
+        variants = {
+            "grayscale": self._prepare_easyocr_crop(killfeed_crop),
+            "red": self._prepare_color_easyocr_crop(killfeed_crop, "red"),
+            "blue": self._prepare_color_easyocr_crop(killfeed_crop, "blue"),
+            "yellow": self._prepare_color_easyocr_crop(killfeed_crop, "yellow"),
+        }
+        return variants
+
+    @staticmethod
+    def _prepare_color_easyocr_crop(killfeed_crop: np.ndarray, color_name: str) -> np.ndarray:
+        """Prepare a color-focused OCR view for one target text color."""
+        hsv = cv2.cvtColor(killfeed_crop, cv2.COLOR_BGR2HSV)
+
+        if color_name == "red":
+            # Close to #D61A1A, with a small wraparound allowance.
+            lower_1 = np.array([0, 100, 50], dtype=np.uint8)
+            upper_1 = np.array([4, 255, 235], dtype=np.uint8)
+            lower_2 = np.array([176, 100, 50], dtype=np.uint8)
+            upper_2 = np.array([179, 255, 235], dtype=np.uint8)
+            mask = cv2.bitwise_or(cv2.inRange(hsv, lower_1, upper_1), cv2.inRange(hsv, lower_2, upper_2))
+        elif color_name == "blue":
+            # Close to #3DA5FF, but widened toward lighter cyan-adjacent HUD blues.
+            lower = np.array([92, 80, 105], dtype=np.uint8)
+            upper = np.array([114, 255, 255], dtype=np.uint8)
+            mask = cv2.inRange(hsv, lower, upper)
+        else:
+            # Favor brighter, higher-saturation yellows so the text pops harder.
+            lower = np.array([18, 110, 170], dtype=np.uint8)
+            upper = np.array([40, 255, 255], dtype=np.uint8)
+            mask = cv2.inRange(hsv, lower, upper)
+
+        # Preserve hard text edges instead of smoothing them into the background.
+        upscaled = cv2.resize(mask, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)
+        if np.mean(upscaled == 255) > 0.60:
+            upscaled = cv2.bitwise_not(upscaled)
+        return upscaled
+
+    @staticmethod
+    def _dedupe_resolved_candidates(
+        candidates: list[KillfeedResolvedName],
+    ) -> list[KillfeedResolvedName]:
+        """Keep the strongest candidate when multiple prep variants hit the same visual text box."""
+        if not candidates:
+            return []
+
+        deduped: list[KillfeedResolvedName] = []
+        for candidate in sorted(candidates, key=lambda item: item.confidence, reverse=True):
+            duplicate = False
+            for existing in deduped:
+                if candidate.player_id != existing.player_id:
+                    continue
+                if KillfeedModule._boxes_similar(candidate.box, existing.box):
+                    duplicate = True
+                    break
+            if not duplicate:
+                deduped.append(candidate)
+        return deduped
+
+    def _build_reference_candidates(
+        self,
+        red_candidates: list[KillfeedResolvedName],
+        all_candidates: list[KillfeedResolvedName],
+    ) -> list[KillfeedResolvedName]:
+        """Use red OCR boxes as positional anchors when available, but allow names from any prep."""
+        if not all_candidates:
+            return []
+        if not red_candidates:
+            return all_candidates
+
+        anchored: list[KillfeedResolvedName] = []
+        consumed_indices: set[int] = set()
+        for red_candidate in red_candidates:
+            best_index = self._find_best_reference_match(
+                anchor=red_candidate,
+                candidates=all_candidates,
+                required_team="enemy",
+            )
+            if best_index is None:
+                anchored.append(
+                    KillfeedResolvedName(
+                        player_id=red_candidate.player_id,
+                        name=red_candidate.name,
+                        team=red_candidate.team,
+                        confidence=red_candidate.confidence,
+                        box=red_candidate.box,
+                        raw_text=red_candidate.raw_text,
+                        source_variant=red_candidate.source_variant,
+                        preferred_team="enemy",
+                    )
+                )
+                continue
+            consumed_indices.add(best_index)
+            best_candidate = all_candidates[best_index]
+            anchored.append(
+                KillfeedResolvedName(
+                    player_id=best_candidate.player_id,
+                    name=best_candidate.name,
+                    team=best_candidate.team,
+                    confidence=best_candidate.confidence,
+                    box=red_candidate.box,
+                    raw_text=best_candidate.raw_text,
+                    source_variant=best_candidate.source_variant,
+                    preferred_team="enemy",
+                )
+            )
+
+        for index, candidate in enumerate(all_candidates):
+            if index in consumed_indices:
+                continue
+            if any(self._boxes_similar(candidate.box, anchored_candidate.box) for anchored_candidate in anchored):
+                continue
+            anchored.append(
+                KillfeedResolvedName(
+                    player_id=candidate.player_id,
+                    name=candidate.name,
+                    team=candidate.team,
+                    confidence=candidate.confidence,
+                    box=candidate.box,
+                    raw_text=candidate.raw_text,
+                    source_variant=candidate.source_variant,
+                    preferred_team="friendly",
+                )
+            )
+        return self._dedupe_resolved_candidates(anchored)
+
+    @staticmethod
+    def _find_best_reference_match(
+        anchor: KillfeedResolvedName,
+        candidates: list[KillfeedResolvedName],
+        required_team: str | None = None,
+    ) -> int | None:
+        """Find the strongest OCR candidate that aligns closely with a red anchor box."""
+        best_index: int | None = None
+        best_score: tuple[float, float] | None = None
+        for index, candidate in enumerate(candidates):
+            if required_team is not None and candidate.team != required_team:
+                continue
+            if not KillfeedModule._boxes_similar(anchor.box, candidate.box):
+                continue
+            overlap = KillfeedModule._box_overlap_ratio(anchor.box, candidate.box)
+            score = (overlap, candidate.confidence)
+            if best_score is None or score > best_score:
+                best_score = score
+                best_index = index
+        return best_index
+
+    @staticmethod
+    def _box_overlap_ratio(left_box: tuple[int, int, int, int], right_box: tuple[int, int, int, int]) -> float:
+        """Return intersection-over-union style overlap for two OCR boxes."""
+        lx, ly, lw, lh = left_box
+        rx, ry, rw, rh = right_box
+        left_x2 = lx + lw
+        left_y2 = ly + lh
+        right_x2 = rx + rw
+        right_y2 = ry + rh
+
+        inter_x1 = max(lx, rx)
+        inter_y1 = max(ly, ry)
+        inter_x2 = min(left_x2, right_x2)
+        inter_y2 = min(left_y2, right_y2)
+        inter_w = max(0, inter_x2 - inter_x1)
+        inter_h = max(0, inter_y2 - inter_y1)
+        intersection = float(inter_w * inter_h)
+        if intersection <= 0.0:
+            return 0.0
+        left_area = float(max(1, lw * lh))
+        right_area = float(max(1, rw * rh))
+        union = left_area + right_area - intersection
+        if union <= 0.0:
+            return 0.0
+        return intersection / union
+
+    @staticmethod
+    def _boxes_similar(left_box: tuple[int, int, int, int], right_box: tuple[int, int, int, int]) -> bool:
+        """Return whether two OCR boxes likely describe the same on-screen text region."""
+        lx, ly, lw, lh = left_box
+        rx, ry, rw, rh = right_box
+        left_center = (lx + (lw / 2.0), ly + (lh / 2.0))
+        right_center = (rx + (rw / 2.0), ry + (rh / 2.0))
+        center_distance = abs(left_center[0] - right_center[0]) + abs(left_center[1] - right_center[1])
+        size_distance = abs(lw - rw) + abs(lh - rh)
+        return center_distance <= 40.0 and size_distance <= 35.0
+
     @staticmethod
     def _score_row_change(current_binary: np.ndarray, previous_binary: np.ndarray | None) -> float:
         """Return normalized change score between row states."""
@@ -510,9 +801,56 @@ class KillfeedModule(PipelineModule):
             return 0.0
         if left == right:
             return 1.0
+        sequence_ratio = float(SequenceMatcher(a=left, b=right).ratio())
+        substring_ratio = 0.0
         if left in right or right in left:
-            return float(min(len(left), len(right)) / max(len(left), len(right)))
-        return float(SequenceMatcher(a=left, b=right).ratio())
+            substring_ratio = float(min(len(left), len(right)) / max(len(left), len(right)))
+
+        # Weight distinctive character runs more heavily than broad fuzzy overlap.
+        bigram_score = KillfeedModule._ngram_overlap_score(left, right, 2)
+        trigram_score = KillfeedModule._ngram_overlap_score(left, right, 3)
+        longest_run_score = KillfeedModule._longest_common_substring_score(left, right)
+        length_score = KillfeedModule._length_similarity_score(left, right)
+
+        return min(
+            1.0,
+            (0.17 * sequence_ratio)
+            + (0.10 * substring_ratio)
+            + (0.22 * bigram_score)
+            + (0.24 * trigram_score)
+            + (0.12 * longest_run_score)
+            + (0.15 * length_score),
+        )
+
+    @staticmethod
+    def _length_similarity_score(left: str, right: str) -> float:
+        """Score how close two normalized name lengths are."""
+        if not left or not right:
+            return 0.0
+        return float(min(len(left), len(right)) / max(len(left), len(right)))
+
+    @staticmethod
+    def _ngram_overlap_score(left: str, right: str, n: int) -> float:
+        """Score overlap of contiguous character sequences."""
+        if len(left) < n or len(right) < n:
+            return 0.0
+        left_ngrams = {left[index : index + n] for index in range(len(left) - n + 1)}
+        right_ngrams = {right[index : index + n] for index in range(len(right) - n + 1)}
+        if not left_ngrams or not right_ngrams:
+            return 0.0
+        shared = left_ngrams & right_ngrams
+        return float((2 * len(shared)) / (len(left_ngrams) + len(right_ngrams)))
+
+    @staticmethod
+    def _longest_common_substring_score(left: str, right: str) -> float:
+        """Score the strongest shared contiguous character run."""
+        if not left or not right:
+            return 0.0
+        matcher = SequenceMatcher(a=left, b=right)
+        match = matcher.find_longest_match(0, len(left), 0, len(right))
+        if match.size <= 0:
+            return 0.0
+        return float((2 * match.size) / (len(left) + len(right)))
 
     @staticmethod
     def _blend_name_confidence(ocr_confidence: float, registry_score: float) -> float:

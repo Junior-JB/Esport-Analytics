@@ -1,4 +1,3 @@
-"""Validation-only dashboard state builder."""
 
 from __future__ import annotations
 

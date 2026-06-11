@@ -110,6 +110,14 @@ class KillfeedCountSnapshot:
     trades: int = 0
     name_detections: int = 0
     resolved_name_detections: int = 0
+    row_groups_detected: int = 0
+    single_side_row_groups: int = 0
+    event_threads_created: int = 0
+    event_threads_reused: int = 0
+    events_counted: int = 0
+    events_blocked_victim_cooldown: int = 0
+    events_blocked_low_confidence: int = 0
+    events_blocked_same_side: int = 0
     player_detection_counts: dict[str, int] = field(default_factory=dict)
     player_kills: dict[str, int] = field(default_factory=dict)
     player_deaths: dict[str, int] = field(default_factory=dict)
