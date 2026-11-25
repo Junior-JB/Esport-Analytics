@@ -29,9 +29,7 @@ Key rule:
 - scoreboard must complete registration before killfeed becomes active
 - once registration succeeds, scoreboard disables itself
 
-Project entry point:
 
-- [app/main.py](/Users/juniorbenitez/Documents/main project/personal_project/app/main.py)
 
 Config:
 
